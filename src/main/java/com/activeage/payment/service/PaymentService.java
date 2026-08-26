@@ -5,4 +5,6 @@ import com.activeage.payment.model.PaymentResult;
 
 public interface PaymentService {
     PaymentResult createPayment(PaymentIntent intent);
+
+    void handleWebhook(String paymentId);
 }

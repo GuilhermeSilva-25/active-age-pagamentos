@@ -8,6 +8,8 @@ import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.client.preference.PreferenceItemRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
 import com.mercadopago.resources.preference.Preference;
+import com.mercadopago.client.payment.PaymentClient;
+import com.mercadopago.resources.payment.Payment;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -47,6 +49,23 @@ public class MercadoPagoPaymentService implements PaymentService {
 
         } catch (Exception e) {
             throw new RuntimeException("Erro ao criar pagamento no Mercado Pago: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void handleWebhook(String paymentId) {
+        try {
+            PaymentClient client = new PaymentClient();
+
+            Payment payment = client.get(Long.parseLong(paymentId));
+            String status = payment.getStatus();
+            String referenceId = payment.getExternalReference();
+            System.out.println("🔔 Webhook Recebido!");
+            System.out.println("ID do Pagamento: " + paymentId);
+            System.out.println("Referência (Agendamento/Médico): " + referenceId);
+            System.out.println("Status oficial: " + status);
+        } catch (Exception e) {
+            System.err.println("Erro ao processar webhook: " + e.getMessage());
         }
     }
 }

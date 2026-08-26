@@ -2,6 +2,7 @@ package com.activeage.payment.controller;
 
 import com.activeage.payment.model.PaymentIntent;
 import com.activeage.payment.model.PaymentResult;
+import com.activeage.payment.model.WebhookNotification;
 import com.activeage.payment.service.PaymentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,7 +21,18 @@ public class PaymentController {
     @PostMapping("/create")
     public ResponseEntity<PaymentResult> createPayment(@RequestBody PaymentIntent intent) {
         PaymentResult result = paymentService.createPayment(intent);
-
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/webhook")
+    public ResponseEntity<String> receiveWebhook(@RequestBody WebhookNotification notification) {
+
+        if ("payment".equals(notification.type()) && notification.data() != null) {
+            String paymentId = notification.data().get("id");
+
+            paymentService.handleWebhook(paymentId);
+        }
+
+        return ResponseEntity.ok("Aviso Recebido");
     }
 }
