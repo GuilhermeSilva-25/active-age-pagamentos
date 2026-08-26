@@ -38,6 +38,7 @@ public class MercadoPagoPaymentService implements PaymentService {
 
             PreferenceRequest request = PreferenceRequest.builder()
                     .items(Collections.singletonList(item))
+                    .externalReference(intent.referenceId())
                     .build();
 
             Preference preference = client.create(request);
