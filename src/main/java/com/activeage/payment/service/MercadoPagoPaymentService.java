@@ -41,6 +41,7 @@ public class MercadoPagoPaymentService implements PaymentService {
             PreferenceRequest request = PreferenceRequest.builder()
                     .items(Collections.singletonList(item))
                     .externalReference(intent.referenceId())
+                    .notificationUrl("https://portfolio-flop-exquisite.ngrok-free.dev/api/payments/webhook")
                     .build();
 
             Preference preference = client.create(request);
