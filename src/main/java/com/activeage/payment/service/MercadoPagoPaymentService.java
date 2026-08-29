@@ -25,6 +25,9 @@ public class MercadoPagoPaymentService implements PaymentService {
     @Value("${webhook.base-url}")
     private String webhookBaseUrl;
 
+    @Value("${main-backend.url}")
+    private String mainBackendUrl;
+
     @PostConstruct
     public void init() {
         MercadoPagoConfig.setAccessToken(accessToken);
@@ -68,6 +71,18 @@ public class MercadoPagoPaymentService implements PaymentService {
             System.out.println("ID do Pagamento: " + paymentId);
             System.out.println("Referência (Agendamento/Médico): " + referenceId);
             System.out.println("Status oficial: " + status);
+            if ("approved".equals(status)) {
+                System.out.println("✅ Pagamento Aprovado! Avisando o backend principal...");
+                java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
+                java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI
+                                .create(mainBackendUrl + "/api/agendamentos/" + referenceId + "/confirmar-pagamento"))
+                        .PUT(java.net.http.HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+                httpClient.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+                System.out.println("🚀 Backend principal atualizado com sucesso!");
+            }
         } catch (Exception e) {
             System.err.println("Erro ao processar webhook: " + e.getMessage());
         }
