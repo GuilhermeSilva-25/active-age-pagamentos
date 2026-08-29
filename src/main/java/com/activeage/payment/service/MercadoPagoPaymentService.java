@@ -73,15 +73,21 @@ public class MercadoPagoPaymentService implements PaymentService {
             System.out.println("Status oficial: " + status);
             if ("approved".equals(status)) {
                 System.out.println("✅ Pagamento Aprovado! Avisando o backend principal...");
+
+                String endpointTarget;
+
+                if (referenceId.startsWith("MED-")) {
+                    endpointTarget = "/api/usuarios/medicos/" + referenceId + "/assinatura/ativar";
+                } else {
+                    endpointTarget = "/api/agendamentos/" + referenceId + "/confirmar-pagamento";
+                }
                 java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
                 java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI
-                                .create(mainBackendUrl + "/api/agendamentos/" + referenceId + "/confirmar-pagamento"))
+                        .uri(java.net.URI.create(mainBackendUrl + endpointTarget))
                         .PUT(java.net.http.HttpRequest.BodyPublishers.noBody())
                         .build();
-
                 httpClient.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                System.out.println("🚀 Backend principal atualizado com sucesso!");
+                System.out.println("🚀 Backend principal atualizado com sucesso! (Rota: " + endpointTarget + ")");
             }
         } catch (Exception e) {
             System.err.println("Erro ao processar webhook: " + e.getMessage());
