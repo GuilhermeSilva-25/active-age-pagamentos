@@ -22,6 +22,9 @@ public class MercadoPagoPaymentService implements PaymentService {
     @Value("${mercadopago.access-token}")
     private String accessToken;
 
+    @Value("${webhook.base-url}")
+    private String webhookBaseUrl;
+
     @PostConstruct
     public void init() {
         MercadoPagoConfig.setAccessToken(accessToken);
@@ -41,7 +44,7 @@ public class MercadoPagoPaymentService implements PaymentService {
             PreferenceRequest request = PreferenceRequest.builder()
                     .items(Collections.singletonList(item))
                     .externalReference(intent.referenceId())
-                    .notificationUrl("https://portfolio-flop-exquisite.ngrok-free.dev/api/payments/webhook")
+                    .notificationUrl(webhookBaseUrl + "/api/payments/webhook")
                     .build();
 
             Preference preference = client.create(request);
