@@ -16,6 +16,13 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 
+/**
+ * Implementação do serviço de pagamentos específica para o Mercado Pago.
+ *
+ * Esta classe é responsável por interagir diretamente com o SDK oficial do Mercado Pago.
+ * Ela gera links de checkout dinâmicos e também atua como roteador, notificando o
+ * backend principal via chamadas HTTP quando um pagamento é confirmado.
+ */
 @Service
 public class MercadoPagoPaymentService implements PaymentService {
 
@@ -28,11 +35,27 @@ public class MercadoPagoPaymentService implements PaymentService {
     @Value("${main-backend.url}")
     private String mainBackendUrl;
 
+    /**
+     * Inicializa as configurações do Mercado Pago após a injeção de dependências.
+     *
+     * Este método é executado automaticamente pelo Spring (@PostConstruct) para
+     * configurar o Token de Acesso necessário nas chamadas da API do Mercado Pago.
+     */
     @PostConstruct
     public void init() {
         MercadoPagoConfig.setAccessToken(accessToken);
     }
 
+    /**
+     * Cria uma nova preferência (Preference) de checkout no Mercado Pago.
+     *
+     * A preferência engloba o valor do item, uma referência externa para vínculo
+     * e configura a URL dinâmica de notificação (webhook) para o ambiente correto.
+     *
+     * @param intent Objeto com os detalhes do pagamento e referência externa.
+     * @return Um objeto com o ID da preferência e a URL (InitPoint) para redirecionar o usuário.
+     * @throws RuntimeException Caso ocorra algum erro de comunicação com a API do Mercado Pago.
+     */
     @Override
     public PaymentResult createPayment(PaymentIntent intent) {
         try {
@@ -59,6 +82,15 @@ public class MercadoPagoPaymentService implements PaymentService {
         }
     }
 
+    /**
+     * Valida e roteia uma notificação de pagamento recebida via webhook.
+     *
+     * Este método não confia cegamente no ID recebido. Ele consulta ativamente a API
+     * do Mercado Pago para buscar o status da transação. Se o pagamento for aprovado,
+     * realiza um PUT HTTP no backend principal para ativar o agendamento ou a assinatura médica.
+     *
+     * @param paymentId O identificador oficial do pagamento no Mercado Pago.
+     */
     @Override
     public void handleWebhook(String paymentId) {
         try {
