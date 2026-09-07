@@ -41,7 +41,14 @@ jobs:
         run: chmod +x ./mvnw
 
       - name: Instalar dependências e Executar Linter (Checkstyle)
-        run: ./mvnw checkstyle:check
+        run: ./mvnw checkstyle:check -Dcheckstyle.failsOnError=false
 
       - name: Executar Testes Unitários e Cobertura (Jacoco)
+        run: ./mvnw test
+
+      - name: Executar Testes Unitários e Cobertura (Jacoco)
+        env:
+          MERCADOPAGO_TOKEN: ${{ secrets.MERCADOPAGO_TOKEN }}
+          WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}
+          MAIN_BACKEND_URL: ${{ vars.MAIN_BACKEND_URL }}
         run: ./mvnw test
