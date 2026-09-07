@@ -36,3 +36,12 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dar permissão de execução ao Maven Wrapper
+        run: chmod +x ./mvnw
+
+      - name: Instalar dependências e Executar Linter (Checkstyle)
+        run: ./mvnw checkstyle:check
+
+      - name: Executar Testes Unitários e Cobertura (Jacoco)
+        run: ./mvnw test
