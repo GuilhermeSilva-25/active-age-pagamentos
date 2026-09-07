@@ -1,0 +1,30 @@
+name: CI Pipeline - Payment Service
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (Java ${{ matrix.java-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        java-version: [ '17', '21' ]
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Validar configuração
+        run: java -version
