@@ -41,7 +41,7 @@ jobs:
         run: chmod +x ./mvnw
 
       - name: Instalar dependências e Executar Linter (Checkstyle)
-        run: ./mvnw checkstyle:check -Dcheckstyle.failsOnError=false
+        run: ./mvnw checkstyle:checkstyle
 
       - name: Executar Testes Unitários e Cobertura (Jacoco)
         run: ./mvnw test
