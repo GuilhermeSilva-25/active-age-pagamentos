@@ -45,9 +45,6 @@ jobs:
         run: ./mvnw checkstyle:checkstyle
 
       - name: Executar Testes Unitários e Cobertura (Jacoco)
-        run: ./mvnw test
-
-      - name: Executar Testes Unitários e Cobertura (Jacoco)
         env:
           MERCADOPAGO_TOKEN: ${{ secrets.MERCADOPAGO_TOKEN }}
           WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}
