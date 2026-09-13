@@ -14,6 +14,10 @@ import com.activeage.payment.model.PaymentType;
 import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
+import com.activeage.payment.model.PaymentResult;
+import com.activeage.payment.model.PaymentStatus;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import java.util.Map;
 
@@ -96,5 +100,56 @@ class PaymentControllerTest {
         assertThrows(RuntimeException.class, () -> {
             paymentController.createPayment(intent);
         }, "O Controller deve propagar a RuntimeException do Gateway");
+    }
+
+    /**
+     * Teste de Caminho Feliz: Criação de Pagamento.
+     * Deve retornar 200 OK com o Link de Pagamento (Init Point).
+     */
+    @Test
+    void shouldCreatePaymentSuccessfully() {
+        // Arrange: Intent válida e o retorno simulado de sucesso do Service
+        PaymentIntent intent = new PaymentIntent(
+                new BigDecimal("150.00"),
+                "Mensalidade Active Age",
+                "medico@teste.com",
+                PaymentType.SUBSCRIPTION,
+                "MED-123"
+        );
+        PaymentResult mockResult = new PaymentResult("pref_987", "https://checkout.mp.com/987", PaymentStatus.PENDING);
+
+        when(paymentService.createPayment(intent)).thenReturn(mockResult);
+
+        // Act: Fazemos a chamada ao controller
+        ResponseEntity<PaymentResult> response = paymentController.createPayment(intent);
+
+        // Assert: Validamos que o status é 200 OK e o link foi gerado
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("pref_987", response.getBody().paymentId());
+        assertEquals("https://checkout.mp.com/987", response.getBody().checkoutUrl());
+    }
+
+    /**
+     * Teste de Caminho Feliz: Processamento de Webhook de Pagamento.
+     * Como o evento é do tipo "payment", o Service DEVE ser chamado.
+     */
+    @Test
+    void shouldProcessWebhookSuccessfully() {
+        // Arrange: Notificação válida do Mercado Pago
+        WebhookNotification notification = new WebhookNotification(
+                "payment.updated",
+                "payment", // TIPO CORRETO
+                Map.of("id", "99999")
+        );
+
+        // Act
+        ResponseEntity<String> response = paymentController.receiveWebhook(notification);
+
+        // Assert: Retorna 200 OK e chama o Service passando o ID "99999"
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Aviso Recebido", response.getBody());
+
+        // Garante que o serviço foi acionado exatamente 1 vez com o ID correto
+        verify(paymentService, times(1)).handleWebhook("99999");
     }
 }
