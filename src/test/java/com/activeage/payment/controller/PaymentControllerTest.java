@@ -9,6 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.activeage.payment.model.PaymentIntent;
+import com.activeage.payment.model.PaymentType;
+import java.math.BigDecimal;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.when;
 
 import java.util.Map;
 
@@ -59,5 +64,36 @@ class PaymentControllerTest {
 
         // 2. GARANTIA DO CAMINHO TRISTE: O Service não deve ser acionado!
         verifyNoInteractions(paymentService);
+    }
+
+    /**
+     * Teste de Caminho Triste (Sad Path) para a criação de pagamento.
+     * <p>
+     * <b>Cenário:</b> O cliente envia uma intenção de pagamento válida, mas o
+     * serviço de pagamentos (Gateway) falha (ex: indisponibilidade da API do Mercado Pago).
+     * <br>
+     * <b>Comportamento Esperado:</b> O Controller deve repassar a exceção lançada
+     * pelo serviço (para ser posteriormente capturada por um ExceptionHandler global
+     * e retornar um erro 500 ou 502 ao frontend).
+     */
+    @Test
+    void shouldPropagateExceptionWhenServiceFailsToCreatePayment() {
+        // Arrange: Criamos um payload válido para a tentativa de pagamento
+        PaymentIntent intent = new PaymentIntent(
+                new BigDecimal("100.00"),
+                "Consulta Cardiológica",
+                "paciente@email.com",
+                PaymentType.CONSULTATION,
+                "MED-123"
+        );
+
+        // Simulamos que, ao chamar o serviço, o Mercado Pago estará fora do ar e lançará um erro
+        when(paymentService.createPayment(intent))
+                .thenThrow(new RuntimeException("Erro ao criar pagamento no Mercado Pago: API Indisponível"));
+
+        // Act & Assert: Garantimos que o erro não foi engolido, mas sim lançado adiante
+        assertThrows(RuntimeException.class, () -> {
+            paymentController.createPayment(intent);
+        }, "O Controller deve propagar a RuntimeException do Gateway");
     }
 }
