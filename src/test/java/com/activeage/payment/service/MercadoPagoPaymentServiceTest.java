@@ -14,6 +14,8 @@ import com.activeage.payment.model.PaymentType;
 import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.resources.preference.Preference;
 import org.mockito.MockedStatic;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.junit.jupiter.api.BeforeEach;
 
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
@@ -32,6 +34,12 @@ class MercadoPagoPaymentServiceTest {
 
     @InjectMocks
     private MercadoPagoPaymentService paymentService;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(paymentService, "mainBackendUrl", "http://localhost:8080");
+        ReflectionTestUtils.setField(paymentService, "webhookBaseUrl", "http://localhost:8081");
+    }
 
     /**
      * Teste de Caminho Triste (Sad Path) para o processamento de Webhook.
