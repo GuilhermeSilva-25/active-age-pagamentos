@@ -49,6 +49,7 @@ class PaymentControllerTest {
     void shouldIgnoreWebhookWhenTypeIsNotPayment() {
         // Arrange: Criamos um payload (Caminho Triste) onde o tipo é diferente de "payment"
         WebhookNotification notification = new WebhookNotification(
+                "payment.created", // Adicionamos a ação
                 "subscription",
                 Map.of("id", "12345")
         );
