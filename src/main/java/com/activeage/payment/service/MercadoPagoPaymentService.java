@@ -14,15 +14,15 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.Locale;
 
-/**
- * Implementação do serviço de pagamentos específica para o Mercado Pago.
- *
- * Esta classe é responsável por interagir diretamente com o SDK oficial do Mercado Pago.
- * Ela gera links de checkout dinâmicos e também atua como roteador, notificando o
- * backend principal via chamadas HTTP quando um pagamento é confirmado.
- */
 @Service
 public class MercadoPagoPaymentService implements PaymentService {
 
@@ -35,27 +35,11 @@ public class MercadoPagoPaymentService implements PaymentService {
     @Value("${main-backend.url}")
     private String mainBackendUrl;
 
-    /**
-     * Inicializa as configurações do Mercado Pago após a injeção de dependências.
-     *
-     * Este método é executado automaticamente pelo Spring (@PostConstruct) para
-     * configurar o Token de Acesso necessário nas chamadas da API do Mercado Pago.
-     */
     @PostConstruct
     public void init() {
         MercadoPagoConfig.setAccessToken(accessToken);
     }
 
-    /**
-     * Cria uma nova preferência (Preference) de checkout no Mercado Pago.
-     *
-     * A preferência engloba o valor do item, uma referência externa para vínculo
-     * e configura a URL dinâmica de notificação (webhook) para o ambiente correto.
-     *
-     * @param intent Objeto com os detalhes do pagamento e referência externa.
-     * @return Um objeto com o ID da preferência e a URL (InitPoint) para redirecionar o usuário.
-     * @throws RuntimeException Caso ocorra algum erro de comunicação com a API do Mercado Pago.
-     */
     @Override
     public PaymentResult createPayment(PaymentIntent intent) {
         try {
@@ -82,15 +66,6 @@ public class MercadoPagoPaymentService implements PaymentService {
         }
     }
 
-    /**
-     * Valida e roteia uma notificação de pagamento recebida via webhook.
-     *
-     * Este método não confia cegamente no ID recebido. Ele consulta ativamente a API
-     * do Mercado Pago para buscar o status da transação. Se o pagamento for aprovado,
-     * realiza um PUT HTTP no backend principal para ativar o agendamento ou a assinatura médica.
-     *
-     * @param paymentId O identificador oficial do pagamento no Mercado Pago.
-     */
     @Override
     public void handleWebhook(String paymentId) {
         try {
@@ -99,27 +74,50 @@ public class MercadoPagoPaymentService implements PaymentService {
             Payment payment = client.get(Long.parseLong(paymentId));
             String status = payment.getStatus();
             String referenceId = payment.getExternalReference();
-            System.out.println("🔔 Webhook Recebido!");
+            System.out.println("Webhook Recebido!");
             System.out.println("ID do Pagamento: " + paymentId);
-            System.out.println("Referência (Agendamento/Médico): " + referenceId);
+            System.out.println("Referencia: " + referenceId);
             System.out.println("Status oficial: " + status);
             if ("approved".equals(status)) {
-                System.out.println("✅ Pagamento Aprovado! Avisando o backend principal...");
+                System.out.println("Pagamento Aprovado! Notificando backend...");
 
                 String endpointTarget;
+                HttpClient httpClient = HttpClient.newHttpClient();
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder();
 
-                if (referenceId.startsWith("MED-")) {
+                if (referenceId != null && referenceId.startsWith("MED-")) {
                     endpointTarget = "/api/usuarios/medicos/" + referenceId + "/assinatura/ativar";
+                    requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
+                            .PUT(HttpRequest.BodyPublishers.noBody());
                 } else {
-                    endpointTarget = "/api/agendamentos/" + referenceId + "/confirmar-pagamento";
+                    String cleanRef = referenceId != null ? referenceId.replace("AGEND-", "") : "";
+                    endpointTarget = "/api/agendamentos/" + cleanRef + "/confirmar-pagamento";
+
+                    BigDecimal valorPago = payment.getTransactionAmount();
+                    String metodo = payment.getPaymentMethodId();
+                    String transacaoId = payment.getId() != null ? payment.getId().toString() : paymentId;
+                    String dataPagamentoStr = payment.getDateApproved() != null
+                            ? payment.getDateApproved().toLocalDateTime().toString()
+                            : LocalDateTime.now().toString();
+
+                    double valDouble = valorPago != null ? valorPago.doubleValue() : 0.0;
+                    String jsonBody = String.format(
+                            Locale.US,
+                            "{\"transacaoId\":\"%s\",\"metodo\":\"%s\",\"valorPago\":%.2f,\"dataPagamento\":\"%s\"}",
+                            transacaoId,
+                            metodo != null ? metodo : "mercado_pago",
+                            valDouble,
+                            dataPagamentoStr
+                    );
+
+                    requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
                 }
-                java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
-                java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create(mainBackendUrl + endpointTarget))
-                        .PUT(java.net.http.HttpRequest.BodyPublishers.noBody())
-                        .build();
-                httpClient.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                System.out.println("🚀 Backend principal atualizado com sucesso! (Rota: " + endpointTarget + ")");
+
+                HttpRequest httpRequest = requestBuilder.build();
+                httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                System.out.println("Backend principal atualizado com sucesso! (Rota: " + endpointTarget + ")");
             }
         } catch (Exception e) {
             System.err.println("Erro ao processar webhook: " + e.getMessage());
