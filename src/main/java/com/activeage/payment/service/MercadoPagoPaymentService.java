@@ -4,6 +4,7 @@ import com.activeage.payment.model.PaymentIntent;
 import com.activeage.payment.model.PaymentResult;
 import com.activeage.payment.model.PaymentStatus;
 import com.mercadopago.MercadoPagoConfig;
+import com.mercadopago.client.preference.PreferenceBackUrlsRequest;
 import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.client.preference.PreferenceItemRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
@@ -35,6 +36,9 @@ public class MercadoPagoPaymentService implements PaymentService {
     @Value("${main-backend.url}")
     private String mainBackendUrl;
 
+    @Value("${frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
+
     @PostConstruct
     public void init() {
         MercadoPagoConfig.setAccessToken(accessToken);
@@ -51,10 +55,17 @@ public class MercadoPagoPaymentService implements PaymentService {
                     .unitPrice(intent.amount())
                     .build();
 
+            PreferenceBackUrlsRequest backUrls = PreferenceBackUrlsRequest.builder()
+                    .success(frontendBaseUrl + "/dashboard?status=approved")
+                    .failure(frontendBaseUrl + "/dashboard?status=failure")
+                    .pending(frontendBaseUrl + "/dashboard?status=pending")
+                    .build();
+
             PreferenceRequest request = PreferenceRequest.builder()
                     .items(Collections.singletonList(item))
                     .externalReference(intent.referenceId())
                     .notificationUrl(webhookBaseUrl + "/api/payments/webhook")
+                    .backUrls(backUrls)
                     .build();
 
             Preference preference = client.create(request);
@@ -70,57 +81,222 @@ public class MercadoPagoPaymentService implements PaymentService {
     public void handleWebhook(String paymentId) {
         try {
             PaymentClient client = new PaymentClient();
-
             Payment payment = client.get(Long.parseLong(paymentId));
             String status = payment.getStatus();
             String referenceId = payment.getExternalReference();
-            System.out.println("Webhook Recebido!");
-            System.out.println("ID do Pagamento: " + paymentId);
-            System.out.println("Referencia: " + referenceId);
-            System.out.println("Status oficial: " + status);
+            System.out.println("Webhook Recebido! ID: " + paymentId + " | Ref: " + referenceId + " | Status: " + status);
+
             if ("approved".equals(status)) {
-                System.out.println("Pagamento Aprovado! Notificando backend...");
-
-                String endpointTarget;
-                HttpClient httpClient = HttpClient.newHttpClient();
-                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder();
-
-                if (referenceId != null && referenceId.startsWith("MED-")) {
-                    endpointTarget = "/api/usuarios/medicos/" + referenceId + "/assinatura/ativar";
-                    requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
-                            .PUT(HttpRequest.BodyPublishers.noBody());
-                } else {
-                    String cleanRef = referenceId != null ? referenceId.replace("AGEND-", "") : "";
-                    endpointTarget = "/api/agendamentos/" + cleanRef + "/confirmar-pagamento";
-
-                    BigDecimal valorPago = payment.getTransactionAmount();
-                    String metodo = payment.getPaymentMethodId();
-                    String transacaoId = payment.getId() != null ? payment.getId().toString() : paymentId;
-                    String dataPagamentoStr = payment.getDateApproved() != null
-                            ? payment.getDateApproved().toLocalDateTime().toString()
-                            : LocalDateTime.now().toString();
-
-                    double valDouble = valorPago != null ? valorPago.doubleValue() : 0.0;
-                    String jsonBody = String.format(
-                            Locale.US,
-                            "{\"transacaoId\":\"%s\",\"metodo\":\"%s\",\"valorPago\":%.2f,\"dataPagamento\":\"%s\"}",
-                            transacaoId,
-                            metodo != null ? metodo : "mercado_pago",
-                            valDouble,
-                            dataPagamentoStr
-                    );
-
-                    requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
-                }
-
-                HttpRequest httpRequest = requestBuilder.build();
-                httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-                System.out.println("Backend principal atualizado com sucesso! (Rota: " + endpointTarget + ")");
+                notificarBackendAprovado(
+                        payment.getId() != null ? payment.getId().toString() : paymentId,
+                        referenceId,
+                        payment.getTransactionAmount(),
+                        payment.getPaymentMethodId(),
+                        payment.getDateApproved() != null ? payment.getDateApproved().toLocalDateTime().toString() : LocalDateTime.now().toString()
+                );
             }
         } catch (Exception e) {
             System.err.println("Erro ao processar webhook: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public com.activeage.payment.model.PaymentVerificationResult verifyPayment(String referenceId, String paymentId, BigDecimal expectedAmount) {
+        System.out.println("Consultando verificação de segurança no Mercado Pago...");
+        System.out.println("Parâmetros: Ref=" + referenceId + " | PaymentId=" + paymentId + " | Valor Esperado=" + expectedAmount);
+
+        // 1. Tentar busca direta por Payment ID caso fornecido
+        if (paymentId != null && !paymentId.isBlank()) {
+            try {
+                String cleanPaymentId = paymentId.replaceAll("[^0-9]", "");
+                if (!cleanPaymentId.isBlank()) {
+                    PaymentClient client = new PaymentClient();
+                    Payment payment = client.get(Long.parseLong(cleanPaymentId));
+                    if (payment != null) {
+                        String status = payment.getStatus();
+                        BigDecimal amountPaid = payment.getTransactionAmount();
+                        String method = payment.getPaymentMethodId();
+                        String ref = payment.getExternalReference();
+
+                        boolean isApproved = "approved".equalsIgnoreCase(status);
+                        boolean isAmountCorrect = expectedAmount == null || (amountPaid != null && amountPaid.compareTo(expectedAmount) >= 0);
+
+                        if (isApproved && isAmountCorrect) {
+                            notificarBackendAprovado(
+                                    cleanPaymentId,
+                                    ref != null ? ref : referenceId,
+                                    amountPaid,
+                                    method,
+                                    payment.getDateApproved() != null ? payment.getDateApproved().toLocalDateTime().toString() : LocalDateTime.now().toString()
+                            );
+                            return new com.activeage.payment.model.PaymentVerificationResult(
+                                    true,
+                                    status,
+                                    amountPaid,
+                                    expectedAmount,
+                                    cleanPaymentId,
+                                    method,
+                                    "Pagamento validado e aprovado com sucesso no Mercado Pago."
+                            );
+                        } else if (!isApproved) {
+                            return new com.activeage.payment.model.PaymentVerificationResult(
+                                    false,
+                                    status,
+                                    amountPaid,
+                                    expectedAmount,
+                                    cleanPaymentId,
+                                    method,
+                                    "Pagamento encontrado, mas o status no Mercado Pago é: " + status
+                            );
+                        } else {
+                            return new com.activeage.payment.model.PaymentVerificationResult(
+                                    false,
+                                    status,
+                                    amountPaid,
+                                    expectedAmount,
+                                    cleanPaymentId,
+                                    method,
+                                    "O valor pago (R$ " + amountPaid + ") é inferior ao valor da consulta (R$ " + expectedAmount + ")."
+                            );
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Aviso: Falha ao buscar por ID (" + paymentId + "): " + e.getMessage());
+            }
+        }
+
+        // 2. Tentar busca por External Reference na API oficial do Mercado Pago
+        if (referenceId != null && !referenceId.isBlank()) {
+            try {
+                HttpClient httpClient = HttpClient.newHttpClient();
+                String encodedRef = java.net.URLEncoder.encode(referenceId, java.nio.charset.StandardCharsets.UTF_8);
+                String searchUrl = "https://api.mercadopago.com/v1/payments/search?external_reference=" + encodedRef + "&sort=date_created&criteria=desc";
+
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(searchUrl))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Content-Type", "application/json")
+                        .GET()
+                        .build();
+
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(resp.body()).getAsJsonObject();
+                    if (root.has("results") && root.get("results").isJsonArray()) {
+                        com.google.gson.JsonArray results = root.getAsJsonArray("results");
+
+                        for (com.google.gson.JsonElement el : results) {
+                            com.google.gson.JsonObject pNode = el.getAsJsonObject();
+                            String status = pNode.has("status") && !pNode.get("status").isJsonNull()
+                                    ? pNode.get("status").getAsString()
+                                    : "";
+                            BigDecimal amountPaid = pNode.has("transaction_amount") && !pNode.get("transaction_amount").isJsonNull()
+                                    ? pNode.get("transaction_amount").getAsBigDecimal()
+                                    : BigDecimal.ZERO;
+                            String pId = pNode.has("id") && !pNode.get("id").isJsonNull()
+                                    ? pNode.get("id").getAsString()
+                                    : "";
+                            String method = pNode.has("payment_method_id") && !pNode.get("payment_method_id").isJsonNull()
+                                    ? pNode.get("payment_method_id").getAsString()
+                                    : "mercado_pago";
+                            String dateApproved = pNode.has("date_approved") && !pNode.get("date_approved").isJsonNull()
+                                    ? pNode.get("date_approved").getAsString()
+                                    : null;
+
+                            boolean isApproved = "approved".equalsIgnoreCase(status);
+                            boolean isAmountCorrect = expectedAmount == null || (amountPaid.compareTo(expectedAmount) >= 0);
+
+                            if (isApproved && isAmountCorrect) {
+                                notificarBackendAprovado(pId, referenceId, amountPaid, method, dateApproved);
+                                return new com.activeage.payment.model.PaymentVerificationResult(
+                                        true,
+                                        status,
+                                        amountPaid,
+                                        expectedAmount,
+                                        pId,
+                                        method,
+                                        "Pagamento aprovado e verificado com sucesso no Mercado Pago."
+                                );
+                            } else if (!isApproved) {
+                                return new com.activeage.payment.model.PaymentVerificationResult(
+                                        false,
+                                        status,
+                                        amountPaid,
+                                        expectedAmount,
+                                        pId,
+                                        method,
+                                        "Pagamento localizado, porém ainda com status: " + status
+                                );
+                            } else {
+                                return new com.activeage.payment.model.PaymentVerificationResult(
+                                        false,
+                                        status,
+                                        amountPaid,
+                                        expectedAmount,
+                                        pId,
+                                        method,
+                                        "O valor pago (R$ " + amountPaid + ") é inferior ao valor exigido (R$ " + expectedAmount + ")."
+                                );
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Erro na consulta de pagamentos por referência: " + e.getMessage());
+            }
+        }
+
+        return new com.activeage.payment.model.PaymentVerificationResult(
+                false,
+                "not_found",
+                BigDecimal.ZERO,
+                expectedAmount,
+                null,
+                null,
+                "Nenhum pagamento aprovado foi localizado no Mercado Pago para esta transação."
+        );
+    }
+
+    private void notificarBackendAprovado(String paymentId, String referenceId, BigDecimal valorPago, String metodo, String dataPagamentoStr) {
+        try {
+            System.out.println("Notificando backend principal sobre pagamento aprovado: " + paymentId);
+            String endpointTarget;
+            HttpClient httpClient = HttpClient.newHttpClient();
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder();
+
+            if (referenceId != null && referenceId.startsWith("MED-")) {
+                endpointTarget = "/api/usuarios/medicos/" + referenceId + "/assinatura/ativar";
+                requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
+                        .PUT(HttpRequest.BodyPublishers.noBody());
+            } else {
+                String cleanRef = referenceId != null ? referenceId.replace("AGEND-", "") : "";
+                endpointTarget = "/api/agendamentos/" + cleanRef + "/confirmar-pagamento";
+
+                double valDouble = valorPago != null ? valorPago.doubleValue() : 0.0;
+                String dataStr = (dataPagamentoStr != null && !dataPagamentoStr.isBlank())
+                        ? dataPagamentoStr
+                        : LocalDateTime.now().toString();
+
+                String jsonBody = String.format(
+                        Locale.US,
+                        "{\"transacaoId\":\"%s\",\"metodo\":\"%s\",\"valorPago\":%.2f,\"dataPagamento\":\"%s\"}",
+                        paymentId != null ? paymentId : "MP-" + System.currentTimeMillis(),
+                        metodo != null ? metodo : "mercado_pago",
+                        valDouble,
+                        dataStr
+                );
+
+                requestBuilder.uri(URI.create(mainBackendUrl + endpointTarget))
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
+            }
+
+            HttpRequest httpRequest = requestBuilder.build();
+            HttpResponse<String> resp = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            System.out.println("Resposta do backend principal (" + endpointTarget + "): " + resp.statusCode());
+        } catch (Exception e) {
+            System.err.println("Erro ao notificar backend principal: " + e.getMessage());
         }
     }
 }

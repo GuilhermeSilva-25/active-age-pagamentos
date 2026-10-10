@@ -64,4 +64,23 @@ public class PaymentController {
 
         return ResponseEntity.ok("Aviso Recebido");
     }
+
+    /**
+     * Consulta a API do Mercado Pago para verificar de forma segura e oficial se o pagamento
+     * foi concluído com status "approved" e se o valor pago é o correto.
+     *
+     * @param referenceId Referência externa (ex: AGEND-123 ou MED-456).
+     * @param paymentId ID da transação no Mercado Pago (opcional).
+     * @param expectedAmount Valor esperado para a teleconsulta ou plano.
+     * @return Resultado da validação de segurança.
+     */
+    @GetMapping("/verify")
+    public ResponseEntity<com.activeage.payment.model.PaymentVerificationResult> verifyPayment(
+            @RequestParam(required = false) String referenceId,
+            @RequestParam(required = false) String paymentId,
+            @RequestParam(required = false) java.math.BigDecimal expectedAmount
+    ) {
+        com.activeage.payment.model.PaymentVerificationResult result = paymentService.verifyPayment(referenceId, paymentId, expectedAmount);
+        return ResponseEntity.ok(result);
+    }
 }

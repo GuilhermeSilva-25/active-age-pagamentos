@@ -27,4 +27,14 @@ public interface PaymentService {
      * @param paymentId O identificador único do pagamento recebido no webhook.
      */
     void handleWebhook(String paymentId);
+
+    /**
+     * Verifica com o Mercado Pago se o pagamento foi realmente aprovado e se o valor pago é o correto.
+     *
+     * @param referenceId Referência externa (ex: AGEND-123 ou MED-456).
+     * @param paymentId ID da transação no Mercado Pago (opcional se fornecido referenceId).
+     * @param expectedAmount Valor esperado para a transação.
+     * @return Objeto contendo o resultado detalhado da verificação de segurança.
+     */
+    com.activeage.payment.model.PaymentVerificationResult verifyPayment(String referenceId, String paymentId, java.math.BigDecimal expectedAmount);
 }
