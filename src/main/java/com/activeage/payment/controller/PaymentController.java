@@ -83,4 +83,44 @@ public class PaymentController {
         com.activeage.payment.model.PaymentVerificationResult result = paymentService.verifyPayment(referenceId, paymentId, expectedAmount);
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * Solicita o estorno/reembolso de uma transação no Mercado Pago via payload JSON.
+     *
+     * @param request Objeto contendo o ID do pagamento, valor opcional e justificativa.
+     * @return O resultado oficial do processamento de reembolso.
+     */
+    @PostMapping("/refund")
+    public ResponseEntity<com.activeage.payment.model.PaymentRefundResult> refundPayment(
+            @RequestBody com.activeage.payment.model.PaymentRefundRequest request
+    ) {
+        com.activeage.payment.model.PaymentRefundResult result = paymentService.refundPayment(
+                request.paymentId(),
+                request.amount(),
+                request.reason()
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Solicita o estorno/reembolso de uma transação no Mercado Pago via PathVariable.
+     *
+     * @param paymentId ID da transação no Mercado Pago.
+     * @param amount    Valor opcional para estorno parcial.
+     * @param reason    Motivo opcional do estorno.
+     * @return O resultado oficial do processamento de reembolso.
+     */
+    @PostMapping("/{paymentId}/refund")
+    public ResponseEntity<com.activeage.payment.model.PaymentRefundResult> refundPaymentById(
+            @PathVariable String paymentId,
+            @RequestParam(required = false) java.math.BigDecimal amount,
+            @RequestParam(required = false) String reason
+    ) {
+        com.activeage.payment.model.PaymentRefundResult result = paymentService.refundPayment(
+                paymentId,
+                amount,
+                reason
+        );
+        return ResponseEntity.ok(result);
+    }
 }

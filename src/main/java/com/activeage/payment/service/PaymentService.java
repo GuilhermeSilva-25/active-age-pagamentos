@@ -37,4 +37,14 @@ public interface PaymentService {
      * @return Objeto contendo o resultado detalhado da verificação de segurança.
      */
     com.activeage.payment.model.PaymentVerificationResult verifyPayment(String referenceId, String paymentId, java.math.BigDecimal expectedAmount);
+
+    /**
+     * Processa a solicitação de estorno/reembolso de um pagamento no gateway.
+     *
+     * @param paymentId ID da transação original de pagamento.
+     * @param amount Valor a ser estornado (opcional, null para estorno integral).
+     * @param reason Motivo do reembolso/cancelamento.
+     * @return Objeto contendo o resultado detalhado da operação de estorno.
+     */
+    com.activeage.payment.model.PaymentRefundResult refundPayment(String paymentId, java.math.BigDecimal amount, String reason);
 }

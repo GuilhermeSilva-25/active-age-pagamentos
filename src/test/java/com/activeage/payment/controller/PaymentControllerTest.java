@@ -152,4 +152,71 @@ class PaymentControllerTest {
         // Garante que o serviço foi acionado exatamente 1 vez com o ID correto
         verify(paymentService, times(1)).handleWebhook("99999");
     }
+
+    /**
+     * Teste de Caminho Feliz: Processamento de Reembolso via POST /refund.
+     */
+    @Test
+    void shouldProcessRefundSuccessfully() {
+        // Arrange
+        com.activeage.payment.model.PaymentRefundRequest request = new com.activeage.payment.model.PaymentRefundRequest(
+                "99999",
+                new BigDecimal("180.00"),
+                "Cancelamento pelo paciente"
+        );
+        com.activeage.payment.model.PaymentRefundResult mockResult = new com.activeage.payment.model.PaymentRefundResult(
+                true,
+                "approved",
+                "REF-12345",
+                "99999",
+                new BigDecimal("180.00"),
+                java.time.LocalDateTime.now(),
+                "Reembolso de R$ 180.00 processado com sucesso no Mercado Pago."
+        );
+
+        when(paymentService.refundPayment("99999", new BigDecimal("180.00"), "Cancelamento pelo paciente"))
+                .thenReturn(mockResult);
+
+        // Act
+        ResponseEntity<com.activeage.payment.model.PaymentRefundResult> response = paymentController.refundPayment(request);
+
+        // Assert
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(true, response.getBody().success());
+        assertEquals("REF-12345", response.getBody().refundId());
+        assertEquals("approved", response.getBody().status());
+    }
+
+    /**
+     * Teste de Caminho Feliz: Processamento de Reembolso via POST /{paymentId}/refund.
+     */
+    @Test
+    void shouldProcessRefundByIdSuccessfully() {
+        // Arrange
+        com.activeage.payment.model.PaymentRefundResult mockResult = new com.activeage.payment.model.PaymentRefundResult(
+                true,
+                "approved",
+                "REF-67890",
+                "88888",
+                new BigDecimal("150.00"),
+                java.time.LocalDateTime.now(),
+                "Reembolso de R$ 150.00 processado com sucesso no Mercado Pago."
+        );
+
+        when(paymentService.refundPayment("88888", new BigDecimal("150.00"), "Cancelamento pelo médico"))
+                .thenReturn(mockResult);
+
+        // Act
+        ResponseEntity<com.activeage.payment.model.PaymentRefundResult> response = paymentController.refundPaymentById(
+                "88888",
+                new BigDecimal("150.00"),
+                "Cancelamento pelo médico"
+        );
+
+        // Assert
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(true, response.getBody().success());
+        assertEquals("REF-67890", response.getBody().refundId());
+        assertEquals("88888", response.getBody().paymentId());
+    }
 }

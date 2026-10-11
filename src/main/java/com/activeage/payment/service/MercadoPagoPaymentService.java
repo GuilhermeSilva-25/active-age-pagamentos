@@ -10,7 +10,10 @@ import com.mercadopago.client.preference.PreferenceItemRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
 import com.mercadopago.resources.preference.Preference;
 import com.mercadopago.client.payment.PaymentClient;
+import com.mercadopago.client.payment.PaymentRefundClient;
 import com.mercadopago.resources.payment.Payment;
+import com.mercadopago.resources.payment.PaymentRefund;
+import com.activeage.payment.model.PaymentRefundResult;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -298,5 +301,89 @@ public class MercadoPagoPaymentService implements PaymentService {
         } catch (Exception e) {
             System.err.println("Erro ao notificar backend principal: " + e.getMessage());
         }
+    }
+
+    @Override
+    public PaymentRefundResult refundPayment(String paymentId, BigDecimal amount, String reason) {
+        System.out.println("Solicitando reembolso no Mercado Pago...");
+        System.out.println("Parâmetros: PaymentId=" + paymentId + " | Valor=" + amount + " | Motivo=" + reason);
+
+        if (paymentId == null || paymentId.isBlank()) {
+            return new PaymentRefundResult(
+                    false,
+                    "failed",
+                    null,
+                    null,
+                    amount != null ? amount : BigDecimal.ZERO,
+                    LocalDateTime.now(),
+                    "ID do pagamento não foi fornecido para estorno."
+            );
+        }
+
+        String cleanPaymentId = paymentId.replaceAll("[^0-9]", "");
+
+        // Se for um ID simulado de ambiente de desenvolvimento/teste (ex: "MP-123" ou string sem dígitos)
+        if (cleanPaymentId.isBlank()) {
+            String fakeRefundId = "REF-" + System.currentTimeMillis();
+            System.out.println("Pagamento identificado como simulado/mock. Gerando estorno mock: " + fakeRefundId);
+            return new PaymentRefundResult(
+                    true,
+                    "approved",
+                    fakeRefundId,
+                    paymentId,
+                    amount != null ? amount : BigDecimal.ZERO,
+                    LocalDateTime.now(),
+                    "Estorno simulado processado com sucesso para ambiente de teste."
+            );
+        }
+
+        try {
+            PaymentRefundClient refundClient = new PaymentRefundClient();
+            Long mpId = Long.parseLong(cleanPaymentId);
+            PaymentRefund refund;
+
+            if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                refund = refundClient.refund(mpId, amount);
+            } else {
+                refund = refundClient.refund(mpId);
+            }
+
+            if (refund != null) {
+                String refundIdStr = refund.getId() != null ? refund.getId().toString() : "REF-" + System.currentTimeMillis();
+                String status = refund.getStatus() != null ? refund.getStatus() : "approved";
+                BigDecimal refundedAmount = refund.getAmount() != null ? refund.getAmount() : (amount != null ? amount : BigDecimal.ZERO);
+
+                return new PaymentRefundResult(
+                        true,
+                        status,
+                        refundIdStr,
+                        cleanPaymentId,
+                        refundedAmount,
+                        refund.getDateCreated() != null ? refund.getDateCreated().toLocalDateTime() : LocalDateTime.now(),
+                        "Reembolso de R$ " + refundedAmount + " processado com sucesso no Mercado Pago."
+                );
+            }
+        } catch (Exception e) {
+            System.err.println("Erro ao estornar pagamento no Mercado Pago (" + paymentId + "): " + e.getMessage());
+            return new PaymentRefundResult(
+                    false,
+                    "failed",
+                    null,
+                    cleanPaymentId,
+                    amount != null ? amount : BigDecimal.ZERO,
+                    LocalDateTime.now(),
+                    "Falha ao processar estorno no Mercado Pago: " + e.getMessage()
+            );
+        }
+
+        return new PaymentRefundResult(
+                false,
+                "failed",
+                null,
+                cleanPaymentId,
+                amount != null ? amount : BigDecimal.ZERO,
+                LocalDateTime.now(),
+                "Não foi possível concluir o reembolso no Mercado Pago."
+        );
     }
 }
